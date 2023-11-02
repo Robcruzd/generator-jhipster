@@ -35,6 +35,8 @@ const { REACT } = clientFrameworkTypes;
  * @extends {BaseApplicationGenerator<import('../server/types.mjs').SpringBootApplication>}
  */
 export default class CiCdGenerator extends BaseApplicationGenerator {
+  environment = "master"
+
   constructor(args, options, features) {
     super(args, options, features);
 
@@ -182,6 +184,19 @@ export default class CiCdGenerator extends BaseApplicationGenerator {
     dest.cicdIntegrationsDeploy = dest.cicdIntegrations.includes('deploy');
     dest.cicdIntegrationsPublishDocker = dest.cicdIntegrations.includes('publishDocker');
     dest.cicdIntegrationsCypressDashboard = dest.cicdIntegrations.includes('cypressDashboard');
+    dest.deliverDeploy = dest.cicdIntegrations.includes('deliverDeploy');
+    dest.deliverDeployAz = dest.cicdIntegrations.includes('deliverDeployAz');
+    dest.azure = dest.propsPrompt.azure;
+    dest.deliverTool = dest.propsPrompt.deliverTool;
+    dest.deliver = dest.propsPrompt.deliver;
+    dest.deployService = dest.propsPrompt.deployService;
+    // dest.jar = dest.propsPrompt.jar;
+    // dest.docker = dest.propsPrompt.docker;
+    // dest.azwsc = dest.propsPrompt.azwsc;
+    // dest.azws = dest.propsPrompt.azws;
+    // dest.aks = dest.propsPrompt.aks;
+    
+    // console.log("dest2: ",dest.cicdIntegrations);
   }
 
   // Public API method used by the getter and also by Blueprints
@@ -202,9 +217,33 @@ export default class CiCdGenerator extends BaseApplicationGenerator {
     return this.asWritingTaskGroup({
       async writeFiles({ application }) {
         Object.assign(this, application);
-        if (this.pipeline === 'jenkins') {
+        if (this.pipeline === 'jenkinsscp') {
           await this.writeFiles({
-            rootTemplatesPath: 'jenkins',
+            rootTemplatesPath: 'jenkinsscp',
+            blocks: [
+              {
+                templates: [
+                  {
+                    sourceFile: 'Jenkinsfile',
+                    destinationFile: 'Jenkinsfile',
+                  },
+                  {
+                    sourceFile: 'jenkins.yml',
+                    destinationFile: `${application.dockerServicesDir}jenkins.yml`,
+                  },
+                  {
+                    sourceFile: 'idea.gdsl',
+                    destinationFile: `${application.srcMainResources}idea.gdsl`,
+                  },
+                ],
+              },
+            ],
+            context: this,
+          });
+        }
+        if (this.pipeline === 'jenkinsdec') {
+          await this.writeFiles({
+            rootTemplatesPath: 'jenkinsdec',
             blocks: [
               {
                 templates: [
@@ -241,8 +280,28 @@ export default class CiCdGenerator extends BaseApplicationGenerator {
         if (this.pipeline === 'github') {
           this.writeFile('github-actions.yml.ejs', '.github/workflows/main.yml');
         }
+        if (this.deployService === 'aks') {
+          this.writeFiles({
+            rootTemplatesPath: 'manifests',
+            blocks: [
+              {
+                templates: [
+                  {
+                    sourceFile: 'deployment.yml',
+                    destinationFile: '.manifests/deployment.yml'
+                  },
+                  {
+                    sourceFile: 'service.yml',
+                    destinationFile: '.manifests/service.yml'
+                  }
+                ]
+              }
+            ],
+            context: this
+          })
+        }
 
-        if (this.cicdIntegrations.includes('deploy')) {
+        if (this.propsPrompt.heroku) {
           if (this.buildTool === MAVEN) {
             this.addMavenDistributionManagement(
               this.artifactorySnapshotsId,

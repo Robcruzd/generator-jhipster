@@ -18,7 +18,7 @@
 -%>
 version: 2.1
 jobs:
-    build:
+    build_test:
         machine:
             image: ubuntu-2004:current
         resource_class: large
@@ -34,6 +34,14 @@ jobs:
                     <%_ } _%>
                     # Perform a Partial Cache Restore (https://circleci.com/docs/2.0/caching/#restoring-cache)
                     - v1-dependencies-
+            - run:
+                name: Install Java 17
+                command: |
+                    sudo apt-get update && sudo apt-get install -y openjdk-17-jdk
+            - run:
+                name: Set Java 17 as default
+                command: sudo update-alternatives --set java /usr/lib/jvm/java-17-openjdk-amd64/bin/java
+          
             - run:
                 name: Print Java Version
                 command: 'java -version'
@@ -121,3 +129,129 @@ jobs:
             <%= commented %>    name: 'E2E: Teardown'
             <%= commented %>    command: <%= clientPackageManager %> run ci:e2e:teardown
             <%_ } _%>
+
+    <%_ if (deliverDeployAz) { _%>
+    
+    deliver:
+        machine:
+            image: ubuntu-2004:current
+        steps:
+            - checkout
+            - run:
+                name: Install Java 17
+                command: |
+                    sudo apt-get update && sudo apt-get install -y openjdk-17-jdk
+            - run:
+                name: Give Executable Power
+            <%_ if (buildToolMaven) { _%>
+                command: 'chmod +x mvnw'
+            <%_ } else if (buildToolGradle) { _%>
+                command: 'chmod +x gradlew'
+            <%_ } _%>
+            <%_ if (deliver=="jar" || deployService=="azws") { _%>
+            - run: 
+                name: Generate JAR
+                command: |
+                    export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64/
+                    npm run java:jar:prod
+            - persist_to_workspace:
+                root: .
+                paths:
+                    - target/*.jar
+            - store_artifacts:
+                path: target/*.jar
+            <%_ } else if (deliver=="docker" || deployService=="azwsc" || deployService=="aks") { _%>
+            - run:
+                name: Login to Azure Container Registry
+                command: |
+                    echo $CONTAINER_REGISTRY_PASSWORD | docker login $CONTAINER_REGISTRY --username $CONTAINER_REGISTRY_USERNAME --password-stdin
+            - run:
+                name: Build and package the application
+                command: |
+                <%_ if (buildToolMaven) { _%>
+                    ./mvnw package -Pprod verify jib:build -Djib.to.image=$CONTAINER_REGISTRY/$IMAGE_REPOSITORY:$CIRCLE_WORKFLOW_ID
+                <%_ } else if (buildToolGradle) { _%>
+                    ./gradlew -Pprod bootJar jib -Djib.to.image=$CONTAINER_REGISTRY/$IMAGE_REPOSITORY:$CIRCLE_WORKFLOW_ID
+                <%_ } _%>
+            <%_ } _%>
+    
+    <%_ if (azure=="deploy") { _%>
+    deploy:
+        <%_ if (deployService=="aks") { _%>
+        machine:
+            image: ubuntu-2004:current
+        <%_ } else if(deployService=="azws" || deployService=="azwsc") { _%>
+        docker:
+            - image: "mcr.microsoft.com/azure-cli"
+        <%_ } _%>
+        steps:
+            <%_ if (deployService=="aks") { _%>
+            - checkout
+            - run:
+                name: Install az y kubectl
+                command: |
+                  curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+                  curl -LO "https://storage.googleapis.com/kubernetes-release/release/$(curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)/bin/linux/amd64/kubectl"
+                  chmod +x ./kubectl
+                  sudo mv ./kubectl /usr/local/bin/kubectl
+            - run:
+                name: Login container
+                command: echo "${CONTAINER_REGISTRY_PASSWORD}" | docker login --username ${CONTAINER_REGISTRY_USERNAME} --password-stdin ${CONTAINER_REGISTRY}      
+            <%_ } else if(deployService=="azws" || deployService=="azwsc") { _%>
+            - attach_workspace:
+                at: .
+            <%_ } _%>
+            - run:
+                name: Authenticate with Azure
+                command: |
+                    az login --service-principal --username $AZURE_CLIENT_ID --password $AZURE_CLIENT_SECRET --tenant $AZURE_TENANT_ID
+            <%_ if (deployService=="aks") { _%>
+            - run:
+                name: Set AKS context
+                command: az aks get-credentials --resource-group "$AZURE_RESOURCE_GROUP" --name "$CLUSTER_NAME"
+            - run:
+                name: Deploy to AKS
+                command: |
+                    kubectl apply -f .manifests/deployment.yml -f .manifests/service.yml
+                    kubectl set image deployment/$DEPLOYMENT_APP_NAME $CONTAINER_REGISTRY_USERNAME=$CONTAINER_REGISTRY/$IMAGE_REPOSITORY:$CIRCLE_WORKFLOW_ID
+            <%_ } else if (deployService=="azws") { _%>
+            - run:
+                name: Deploy to Azure
+                command: |
+                    az webapp deploy --resource-group $RESOURCE_GROUP --name $APP_SERVICE_NAME --src-path $(find . -name "*.jar") --type jar --verbose
+            <%_ } else if(deployService=="azwsc") { _%>
+            - run:
+                name: Azure Web App on Container Deploy
+                command: az webapp create --resource-group "$AZURE_RESOURCE_GROUP" --plan "$AZURE_APP_SERVICE_PLAN" --name "$AZURE_APP_NAME" --deployment-container-image-name "$CONTAINER_REGISTRY/$IMAGE_REPOSITORY:$CIRCLE_WORKFLOW_ID"
+            <%_ } _%>
+            - run:
+                name: Azure logout
+                command: az logout
+    <%_ } _%>
+    <%_ } _%>
+
+workflows:
+    version: 2
+    sample:
+    jobs:
+        - build_test:
+            filters:
+                branches:
+                    only:
+                        - master
+        <%_ if (deliverDeployAz) { _%>
+        - deliver:
+            filters:
+                branches:
+                    only:
+                        - master
+        <%_ if (azure=="deploy") { _%>
+        - deploy:
+            requires:
+                - deliver
+            filters:
+                branches:
+                    only:
+                        - master
+        <%_ } _%>
+        <%_ } _%>
