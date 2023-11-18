@@ -134,7 +134,7 @@ async function askIntegrations() {
   if (['jenkinsscp', 'gitlab', 'travis', 'github'].includes(this.pipeline)) {
     integrationChoices.push({ name: `Analyze your code with ${chalk.yellow('*Sonar*')}`, value: 'sonar' });
   }
-  if (['jenkinsscp', 'gitlab'].includes(this.pipeline)) {
+  if (['jenkinsscp', 'jenkins', 'gitlab', 'travis', 'github', 'circle'].includes(this.pipeline)) {
     integrationChoices.push({
       name: `Add deliver and deploy to the pipeline`,
       value: 'deliverDeploy'
@@ -201,39 +201,51 @@ async function askIntegrations() {
       choices: integrationChoices,
     },
     {
-      when: response => ['jenkinsscp', 'gitlab'].includes(this.pipeline) && response.cicdIntegrations.includes('deliverDeploy'),
+      when: response => ['jenkinsscp', 'jenkins', 'gitlab'].includes(this.pipeline) && response.cicdIntegrations.includes('deliverDeploy'),
       type: 'list',
       name: 'deliverTool',
       message: 'Where do you want to deliver or deploy the app?',
       default: 'azure',
       choices: [
-        { name: 'Azure: Deliver and deploy with azure services', value: 'azure' },
-        { name: `Heroku: Deliver your application to an ${chalk.yellow('*Artifactory*')}`, value: 'heroku'}
+        { name: 'Azure: Deliver and/or deploy with azure services', value: 'azure' },
+        { name: `Artifactory: Only deliver your application to an ${chalk.yellow('*Artifactory*')}`, value: 'artifactory'},
+        { name: 'Heroku: Deliver your application to an Artifactory and deploy on Heroku', value: 'heroku'}
       ]
     },
     {
-      when: response => response.deliverTool && response.deliverTool.includes('heroku'),
+      when: response => ['jenkinsscp', 'jenkins', 'gitlab', 'travis', 'github', 'circle'].includes(this.pipeline) && response.cicdIntegrations.includes('deliverDeploy'),
+      type: 'list',
+      name: 'deliverTool',
+      message: 'Where do you want to deliver or deploy the app?',
+      default: 'azure',
+      choices: [
+        { name: 'Azure: Deliver and/or deploy with azure services', value: 'azure' },
+        { name: `Artifactory: Only deliver your application to an ${chalk.yellow('*Artifactory*')}`, value: 'artifactory'}
+      ]
+    },
+    {
+      when: response => response.deliverTool && (response.deliverTool.includes('artifactory') || response.deliverTool.includes('heroku')),
       type: 'input',
       name: 'artifactorySnapshotsId',
       message: `${chalk.yellow('*Artifactory*')}: what is the ID of distributionManagement for snapshots ?`,
       default: 'snapshots',
     },
     {
-      when: response => response.deliverTool && response.deliverTool.includes('heroku'),
+      when: response => response.deliverTool && (response.deliverTool.includes('artifactory') || response.deliverTool.includes('heroku')),
       type: 'input',
       name: 'artifactorySnapshotsUrl',
       message: `${chalk.yellow('*Artifactory*')}: what is the URL of distributionManagement for snapshots ?`,
       default: 'http://artifactory:8081/artifactory/libs-snapshot',
     },
     {
-      when: response => response.deliverTool && response.deliverTool.includes('heroku'),
+      when: response => response.deliverTool && (response.deliverTool.includes('artifactory') || response.deliverTool.includes('heroku')),
       type: 'input',
       name: 'artifactoryReleasesId',
       message: `${chalk.yellow('*Artifactory*')}: what is the ID of distributionManagement for releases ?`,
       default: 'releases',
     },
     {
-      when: response => response.deliverTool && response.deliverTool.includes('heroku'),
+      when: response => response.deliverTool && (response.deliverTool.includes('artifactory') || response.deliverTool.includes('heroku')),
       type: 'input',
       name: 'artifactoryReleasesUrl',
       message: `${chalk.yellow('*Artifactory*')}: what is the URL of distributionManagement for releases ?`,

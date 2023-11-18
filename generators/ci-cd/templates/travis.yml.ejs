@@ -49,73 +49,145 @@ env:
 <%_ if(cypressTests) { _%>
     - CYPRESS_ENABLE_RECORD: <%= cicdIntegrationsCypressDashboard %>
 <%_ } _%>
-before_install:
-  - |
-    echo '*** Using OpenJDK 17 by default'
-    sudo add-apt-repository -y ppa:openjdk-r/ppa
-    sudo apt-get update -q
-    sudo apt-get install -y openjdk-17-jdk
-    sudo apt-get install -y openjdk-17-jre-headless
-    sudo update-java-alternatives -s java-1.17.0-openjdk-amd64
-    export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-    export PATH=$PATH:$JAVA_HOME/bin
-    java -version
-  - sudo /etc/init.d/mysql stop
-  - sudo /etc/init.d/postgresql stop
-<%_ if (deliverDeployAz) { _%>
-  - curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
-<%_ } _%>
-  - nvm install $NODE_VERSION
-  - npm install -g npm
-  - node -v
-  - npm -v
-install:
-  - <%= clientPackageManager %> install
-script:
-<%_ if (cicdIntegrationsSnyk) { _%>
-  - curl -Lo ./snyk $(curl -s https://api.github.com/repos/snyk/snyk/releases/latest | grep "browser_download_url.*snyk-linux" | cut -d ':' -f 2,3 | tr -d \" | tr -d ' ')
-  - chmod +x snyk
-  - ./snyk test --all-projects || true
-  - ./snyk monitor --all-projects
-<%_ } _%>
-<%_ if (buildToolMaven) { _%>
-  - chmod +x mvnw
-<%_ } else if (buildToolGradle) { _%>
-  - chmod +x gradlew
-<%_ } _%>
-  - <%= clientPackageManager %> run ci:backend:test
-<%_ if (!skipClient) { _%>
-  - <%= clientPackageManager %> run ci:frontend:test
-<%_ } _%>
-<%_ if (deliver=="jar" || deployService=="azws") { _%>
-  - <%= clientPackageManager %> run java:jar:prod
-<%_ } _%>
-<%_ if (buildToolMaven) { _%>
-  <%_ if (cicdIntegrationsSonar) { _%>
-  - if [ $TRAVIS_PULL_REQUEST == "false" ]; then ./mvnw -ntp org.jacoco:jacoco-maven-plugin:prepare-agent initialize sonar:sonar <% if (sonarOrga) { %>-Dsonar.organization=<%= sonarOrga %> <% } %>-Dsonar.host.url=<%= sonarUrl %> -Dsonar.login=$SONAR_TOKEN; fi
-  <%_ } _%>
-  <%_ if (cicdIntegrationsHeroku) { _%>
-  - ./mvnw -ntp com.heroku.sdk:heroku-maven-plugin:2.0.5:deploy -DskipTests -Pprod -Dheroku.buildpacks=heroku/jvm -Dheroku.appName=<%= herokuAppName %>
-  <%_ } _%>
-<%_ } else if (buildToolGradle) { _%>
-  <%_ if (cicdIntegrationsSonar) { _%>
-  - if [ $TRAVIS_PULL_REQUEST == "false" ]; then ./gradlew sonarqube --no-daemon <% if (sonarOrga) { %>-Dsonar.organization=<%= sonarOrga %> <% } %>-Dsonar.host.url=<%= sonarUrl %> -Dsonar.login=$SONAR_TOKEN; fi
-  <%_ } _%>
-  <%_ if (cicdIntegrationsHeroku) { _%>
-  - ./gradlew deployHeroku
-  <%_ } _%>
-<%_ } _%>
-<%_ if (cypressTests) {
-    const commented = applicationTypeGateway ? '# ' : ''; _%>
-  <%= commented %>- <%= clientPackageManager %> run ci:e2e:package
-  <%= commented %>- <%= clientPackageManager %> run ci:e2e:prepare
-  <%= commented %>- <%= clientPackageManager %> run ci:e2e:run
-  <%= commented %>- <%= clientPackageManager %> run ci:e2e:teardown
-<%_ } _%>
-<%_ if (deployService=="azws") { _%>
-  - az login --service-principal --username $AZURE_CLIENT_ID --password $AZURE_CLIENT_SECRET --tenant $AZURE_TENANT_ID
-  - az webapp deploy --resource-group $RESOURCE_GROUP --name $WEBAPP_NAME --src-path $(find . -name "proy*.jar") --type jar --verbose
-<%_ } _%>
+
+stages:
+  - test
+  - deploy
+
+jobs:
+  include:
+    - stage: test
+      name: Tests
+      before_script:
+        - |
+          if [[ $JHI_JDK = '17' ]]; then
+            echo '*** Using OpenJDK 17'
+            sudo add-apt-repository ppa:openjdk-r/ppa -y
+            sudo apt-get update -q
+            sudo apt-get install -y openjdk-17-jdk -y
+            sudo update-java-alternatives -s java-1.17.0-openjdk-amd64
+            export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+            export PATH=$PATH:$JAVA_HOME/bin
+          else
+            echo '*** Using OpenJDK 11 by default'
+            sudo apt-get update -q
+            sudo apt-get install -y openjdk-11-jdk
+            sudo update-java-alternatives -s java-1.11.0-openjdk-amd64
+            export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+            export PATH=$PATH:$JAVA_HOME/bin
+          fin
+          java -version
+        - sudo /etc/init.d/mysql stop
+        - sudo /etc/init.d/postgresql stop
+        - nvm install $NODE_VERSION
+        - npm install -g npm
+        - <%= clientPackageManager %> install
+        - node -v
+        - npm -v
+        <%_ if (buildToolMaven) { _%>
+        - chmod +x mvnw
+        <%_ } else if (buildToolGradle) { _%>
+        - chmod +x gradlew
+        <%_ } _%>
+      script:
+      <%_ if (cicdIntegrationsSnyk) { _%>
+        - curl -Lo ./snyk $(curl -s https://api.github.com/repos/snyk/snyk/releases/latest | grep "browser_download_url.*snyk-linux" | cut -d ':' -f 2,3 | tr -d \" | tr -d ' ')
+        - chmod +x snyk
+        - ./snyk test --all-projects || true
+        - ./snyk monitor --all-projects
+      <%_ } _%>
+        - <%= clientPackageManager %> run ci:backend:test
+      <%_ if (!skipClient) { _%>
+        - <%= clientPackageManager %> run ci:frontend:test
+      <%_ } _%>
+        - <%= clientPackageManager %> run java:jar:prod
+      <%_ if (buildToolMaven) { _%>
+        <%_ if (cicdIntegrationsSonar) { _%>
+        - if [ $TRAVIS_PULL_REQUEST == "false" ]; then ./mvnw -ntp org.jacoco:jacoco-maven-plugin:prepare-agent initialize sonar:sonar <% if (sonarOrga) { %>-Dsonar.organization=<%= sonarOrga %> <% } %>-Dsonar.host.url=<%= sonarUrl %> -Dsonar.login=$SONAR_TOKEN; fi
+        <%_ } _%>
+      <%_ } else if (buildToolGradle) { _%>
+        <%_ if (cicdIntegrationsSonar) { _%>
+        - if [ $TRAVIS_PULL_REQUEST == "false" ]; then ./gradlew sonarqube --no-daemon <% if (sonarOrga) { %>-Dsonar.organization=<%= sonarOrga %> <% } %>-Dsonar.host.url=<%= sonarUrl %> -Dsonar.login=$SONAR_TOKEN; fi
+        <%_ } _%>
+      <%_ } _%>
+      <%_ if (cypressTests || protractorTests) {
+        const commented = applicationTypeGateway ? '# ' : ''; _%>
+        <%= commented %>- <%= clientPackageManager %> run ci:e2e:package
+        <%= commented %>- <%= clientPackageManager %> run ci:e2e:prepare
+        <%= commented %>- <%= clientPackageManager %> run ci:e2e:run
+        <%= commented %>- <%= clientPackageManager %> run ci:e2e:teardown
+      <%_ } _%>
+
+    <%_ if (deliverDeploy && deliverTool!="artifactory") { _%>
+    - stage: deploy
+      name: Build, package and deploy
+      services:
+        - docker
+      before_script:
+        - |
+          if [[ $JHI_JDK = '17' ]]; then
+            echo '*** Using OpenJDK 17'
+            sudo add-apt-repository ppa:openjdk-r/ppa -y
+            sudo apt-get update -q
+            sudo apt-get install -y openjdk-17-jdk -y
+            sudo update-java-alternatives -s java-1.17.0-openjdk-amd64
+            export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+            export PATH=$PATH:$JAVA_HOME/bin
+          else
+            echo '*** Using OpenJDK 11 by default'
+            sudo apt-get update -q
+            sudo apt-get install -y openjdk-11-jdk
+            sudo update-java-alternatives -s java-1.11.0-openjdk-amd64
+            export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+            export PATH=$PATH:$JAVA_HOME/bin
+          fi
+          java -version
+        - sudo /etc/init.d/mysql stop
+        - sudo /etc/init.d/postgresql stop
+      <%_ if (deliverTool=="azure") { _%>
+        - curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+      <%_ } _%>
+        - nvm install $NODE_VERSION
+        - npm install -g npm
+        - <%= clientPackageManager %> install
+      <%_ if (deliver=="docker" || deployService=="azwsc" || deployService=="aks") { _%>
+        - echo "${CONTAINER_REGISTRY_PASSWORD}" | docker login --username ${CONTAINER_REGISTRY_USERNAME} --password-stdin ${CONTAINER_REGISTRY}
+      <%_ } _%>
+      <%_ if (deliverTool=="azure") { _%>
+        - az login --service-principal -u ${AZURE_CLIENT_ID} -p ${AZURE_CLIENT_SECRET} --tenant ${AZURE_TENANT_ID}
+      <%_ } _%>
+      script:
+      <%_ if (deliver=="jar" || deployService=="azws" || cicdIntegrationsHeroku) { _%>
+        - <%= clientPackageManager %> run java:jar:prod
+      <%_ } _%>
+      <%_ if (deployService=="azws") { _%>
+        - az webapp deploy --resource-group ${RESOURCE_GROUP} --name ${WEBAPP_NAME} --src-path $(find . -name "*.jar") --type jar --verbose
+      <%_ } _%>
+      <%_ if (buildToolMaven) { _%>
+        <%_ if (cicdIntegrationsHeroku) { _%>
+        - ./mvnw -ntp com.heroku.sdk:heroku-maven-plugin:2.0.5:deploy -DskipTests -Pprod -Dheroku.buildpacks=heroku/jvm -Dheroku.appName=<%= herokuAppName %>
+        <%_ } _%>
+        <%_ if (deliver=="docker" || deployService=="azwsc" || deployService=="aks") { _%>
+        - ./mvnw package -Pprod verify jib:build -Djib.to.image=${CONTAINER_REGISTRY}/${IMAGE_REPOSITORY}:${TAG}
+          <%_ } _%>
+      <%_ } else if (buildToolGradle) { _%>
+        <%_ if (cicdIntegrationsHeroku) { _%>
+        - ./gradlew deployHeroku
+        <%_ } _%>
+        <%_ if (deliver=="docker" || deployService=="azwsc" || deployService=="aks") { _%>
+        - ./gradlew -Pprod bootJar jib -Djib.to.image=$CONTAINER_REGISTRY/$IMAGE_REPOSITORY:$CIRCLE_WORKFLOW_ID
+        <%_ } _%>
+      <%_ } _%>
+      <%_ if (deployService=="azwsc") { _%>
+        - az webapp config container set --docker-custom-image-name ${CONTAINER_REGISTRY}/${IMAGE_REPOSITORY}:${TAG} --docker-registry-server-password ${CONTAINER_REGISTRY_PASSWORD} --docker-registry-server-url https://${CONTAINER_REGISTRY} --docker-registry-server-user ${CONTAINER_REGISTRY_USERNAME} --name proybaseappserforcon --resource-group ${RESOURCE_GROUP}
+      <%_ } _%>
+      <%_ if (deployService=="aks") { _%>
+        - az webapp config container set --docker-custom-image-name ${CONTAINER_REGISTRY}/${IMAGE_REPOSITORY}:${TAG} --docker-registry-server-password ${CONTAINER_REGISTRY_PASSWORD} --docker-registry-server-url https://${CONTAINER_REGISTRY} --docker-registry-server-user ${CONTAINER_REGISTRY_USERNAME} --name proybaseappserforcon --resource-group ${RESOURCE_GROUP}
+        - az aks get-credentials --resource-group ${RESOURCE_GROUP} --name ${CLUSTER_NAME}
+        - kubectl apply -f .manifests/deployment.yml -f .manifests/service.yml
+        - kubectl set image deployment/proybaseangmvn3 proybaseacr=${CONTAINER_REGISTRY}/${IMAGE_REPOSITORY}:${TAG}
+      <%_ } _%>
+    <%_ } _%>
   
 
 notifications:

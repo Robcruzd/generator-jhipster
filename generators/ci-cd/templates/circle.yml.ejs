@@ -130,7 +130,7 @@ jobs:
             <%= commented %>    command: <%= clientPackageManager %> run ci:e2e:teardown
             <%_ } _%>
 
-    <%_ if (deliverDeployAz) { _%>
+    <%_ if (deliverDeploy && deliverTool!="artifactory") { _%>
     
     deliver:
         machine:
