@@ -208,7 +208,6 @@ async function askIntegrations() {
       default: 'azure',
       choices: [
         { name: 'Azure: Deliver and/or deploy with azure services', value: 'azure' },
-        { name: `Artifactory: Only deliver your application to an ${chalk.yellow('*Artifactory*')}`, value: 'artifactory'},
         { name: 'Heroku: Deliver your application to an Artifactory and deploy on Heroku', value: 'heroku'}
       ]
     },

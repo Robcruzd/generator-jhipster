@@ -1,5 +1,5 @@
 <%#
- Copyright 2013-2023 the original author or authors from the JHipster project.
+ Copyright 2013-2022 the original author or authors from the JHipster project.
 
  This file is part of the JHipster project, see https://www.jhipster.tech/
  for more information.
@@ -16,25 +16,8 @@
  See the License for the specific language governing permissions and
  limitations under the License.
 -%>
-
-trigger:
-- <%= environment %>
-
 variables:
-
-  # Azure Resource Manager connection created during pipeline creation
-  azureSubscription: <%= azureSubscription %>
-
-  # Web app name
-  webAppName: <%= webAppName %>
-
-  # Environment name
-  environmentName: <%= environmentName %>
-
-  # Agent VM image name
-  vmImageName: <%= vmImageName %>
-
-  NODE_VERSION: <%= nodeVersion %>
+  NODE_VERSION: <%= NODE_VERSION %>
   SPRING_OUTPUT_ANSI_ENABLED: NEVER
   SPRING_JPA_SHOW_SQL: false
   JHI_DISABLE_WEBPACK_LOGS: true
@@ -42,8 +25,8 @@ variables:
   JHI_E2E_HEADLESS: true
 
 stages:
-- stage: Build
-  displayName: Build stage
+- stage: Test
+  displayName: Test stage
   jobs:
   - job: Test
     pool:
@@ -59,7 +42,7 @@ stages:
         versionSpec: $(NODE_VERSION)
       displayName: 'TOOLS: install Node.js'
   <%_ } _%>
-  <%_ if (cypressTests) {
+  <%_ if (cypressTests || protractorTests) {
     const commented = applicationTypeGateway ? '# ' : ''; _%>
     <%= commented %>- task: Bash@3
     <%= commented %>  inputs:
@@ -72,6 +55,12 @@ stages:
     #----------------------------------------------------------------------
     # Tests
     #----------------------------------------------------------------------
+    - task: JavaToolInstaller@0
+      inputs:
+        versionSpec: <%= JAVA_VERSION %>
+        jdkArchitectureOption: 'x64'
+        jdkSourceOption: 'PreInstalled'
+      displayName: 'Change Java version'
   <%_ if (!skipClient) { _%>
     - task: Npm@1
       inputs:
@@ -107,7 +96,7 @@ stages:
       inputs:
         testResultsFormat: 'JUnit'
         testResultsFiles: '**/TEST-*.xml'
-        searchFolder: '$(Build.SourcesDirectory)/<%= temporaryDir %>test-results'
+        searchFolder: '$(Build.SourcesDirectory)/<%= buildDir %>test-results'
       condition: succeededOrFailed()
       displayName: 'TESTS: publish test results'
     <%_ } _%>
@@ -120,7 +109,7 @@ stages:
     - task: PublishTestResults@2
       inputs:
         testResultsFormat: 'JUnit'
-        testResultsFiles: '$(Build.SourcesDirectory)/<%= temporaryDir %>test-results/TESTS-results-jest.xml'
+        testResultsFiles: '$(Build.SourcesDirectory)/<%= buildDir %>test-results/TESTS-results-jest.xml'
       condition: succeededOrFailed()
       displayName: 'TESTS: publish test results'
   <%_ } _%>
@@ -131,7 +120,7 @@ stages:
         customCommand: ' run java:jar:prod'
       displayName: 'TESTS: packaging'
   <%_ } _%>
-  <%_ if (cypressTests) {
+  <%_ if (cypressTests || protractorTests) {
       const commented = applicationTypeGateway ? '# ' : ''; _%>
     <%= commented %>- task: Npm@1
     <%= commented %>  inputs:
@@ -156,7 +145,7 @@ stages:
     <%= commented %>- task: PublishPipelineArtifact@1
     <%= commented %>  inputs:
     <%= commented %>    artifactName: 'cypress-screenshots'
-    <%= commented %>    targetPath: '$(Build.SourcesDirectory)/<%= temporaryDir %>cypress/screenshots'
+    <%= commented %>    targetPath: '$(Build.SourcesDirectory)/<%= buildDir %>cypress/screenshots'
     <%= commented %>  condition: failed()
     <%= commented %>  displayName: 'E2E: Publish Cypress Screenshots'
     <%_ } _%>
@@ -166,45 +155,109 @@ stages:
     <%= commented %>    customCommand: ' run ci:e2e:teardown'
     <%= commented %>  displayName: 'E2E: Teardown'
   <%_ } _%>
-  - job: MavenPackageAndPublishArtifacts
-    displayName: Maven Package and Publish Artifacts
+
+<%_ if (deliverDeploy && deliverTool!="artifactory") { _%>
+- stage: Deliver
+  displayName: Deliver stage
+  jobs:
+  - job: deliver
+    displayName: publish artifact or docker
     pool:
-      vmImage: $(vmImageName)
+      vmImage: $(VM_IMAGE_NAME)
 
     steps:
-    - task: Maven@3
-      displayName: 'Maven Package'
+
+    - task: JavaToolInstaller@0
       inputs:
-        mavenPomFile: 'pom.xml'
+        versionSpec: '<%= JAVA_VERSION %>''
+        jdkArchitectureOption: 'x64'
+        jdkSourceOption: 'PreInstalled'
+      displayName: 'Change Java version'
+    <%_ if (deliver=="jar" || deployService=="azws") { _%>
+    - task: Npm@1
+      inputs:
+        command: 'custom'
+        customCommand: ' run java:jar:prod'
+      displayName: 'TESTS: packaging'
 
     - task: CopyFiles@2
       displayName: 'Copy Files to artifact staging directory'
       inputs:
         SourceFolder: '$(System.DefaultWorkingDirectory)'
-        Contents: '**/target/*.?(war|jar)'
+        Contents: '**/target/<%= baseName %>*.jar'
         TargetFolder: $(Build.ArtifactStagingDirectory)
-
+    
     - upload: $(Build.ArtifactStagingDirectory)
       artifact: drop
+    <%_ } else if (deliver=="docker" || deployService=="azwsc" || deployService=="aks") { _%>
+    <%_ if (buildToolMaven) { _%>
+    - script: chmod +x mvnw
+    <%_ } else if (buildToolGradle) { _%>
+    - script: chmod +x gradlew
+    <%_ } _%>
+    - task: Docker@2
+      displayName: Login to Azure Container Registry
+      inputs:
+        command: login
+        containerRegistry: $(CONTAINER_REGISTRY)
+    <%_ if (buildToolMaven) { _%>
+    - script: './mvnw package -Pprod verify jib:build -Djib.to.image=$(CONTAINER_REGISTRY)/$(IMAGE_REPOSITORY):$(TAG)'
+      displayName: 'Build and package the application'
+    <%_ } else if (buildToolGradle) { _%>
+    - script: './gradlew jib -Pprod -Djib.to.image=$(CONTAINER_REGISTRY)/$(IMAGE_REPOSITORY):$(TAG)'
+      displayName: 'Build and package the application'
+    <%_ } _%>
+    <%_ } _%>
 
+<%_ if (azure=="deploy") { _%>
 - stage: Deploy
   displayName: Deploy stage
-  dependsOn: Build
+  dependsOn: Deliver
   condition: succeeded()
   jobs:
-  - deployment: DeployLinuxWebApp
-    displayName: Deploy Linux Web App
-    environment: $(environmentName)
+  - deployment: Deploy
+    displayName: Deploy
+    environment: $(ENVIRONMENT_NAME)
     pool:
-      vmImage: $(vmImageName)
+      vmImage: $(VM_IMAGE_NAME)
     strategy:
       runOnce:
         deploy:
           steps:
+          <%_ if (deployService=="azws") { _%>
           - task: AzureWebApp@1
-            displayName: 'Azure Web App Deploy: proybaseangmvn'
+            displayName: 'Azure Web App Deploy: $(WEBAPP_NAME)'
             inputs:
-              azureSubscription: $(azureSubscription)
+              azureSubscription: $(AZURE_SUBSCRIPTION)
               appType: webAppLinux
-              appName: $(webAppName)
-              package: '$(Pipeline.Workspace)/drop/**/target/*.?(war|jar)'
+              appName: $(WEBAPP_NAME)
+              package: '$(Pipeline.Workspace)/drop/**/target/*.?(jar)'
+          <%_ } else if (deployService=="azwsc") { _%>
+          - task: AzureWebAppContainer@1
+            displayName: 'Azure Web App on Container Deploy'
+            inputs:
+              azureSubscription: $(AZURE_SUBSCRIPTION_SERVICE_CONNECTION)
+              appName: $(WEBAPP_NAME)
+              imageName: $(CONTAINER_REGISTRY)/$(IMAGE_REPOSITORY):$(TAG)
+          <%_ } else if (deployService=="aks") { _%>
+          - task: KubernetesManifest@0
+            displayName: Create imagePullSecret
+            inputs:
+              action: createSecret
+              secretName: $(IMAGE_PULL_SECRET)
+              dockerRegistryEndpoint: $(DOCKER_REGISTRY_SERVICE_CONNECTION)
+
+          - task: KubernetesManifest@0
+            displayName: Deploy to Kubernetes cluster
+            inputs:
+              action: deploy
+              manifests: |
+                $(Pipeline.Workspace)/manifests/deployment.yml
+                $(Pipeline.Workspace)/manifests/service.yml
+              imagePullSecrets: |
+                $(IMAGE_PULL_SECRET)
+              containers: |
+                $(CONTAINER_REGISTRY)/$(IMAGE_REPOSITORY):$(TAG)
+          <%_ } _%>
+<%_ } _%>
+<%_ } _%>

@@ -212,7 +212,7 @@ jobs:
             - run:
                 name: Deploy to AKS
                 command: |
-                    kubectl apply -f .manifests/deployment.yml -f .manifests/service.yml
+                    kubectl apply -f ./manifests/deployment.yml -f ./manifests/service.yml
                     kubectl set image deployment/$DEPLOYMENT_APP_NAME $CONTAINER_REGISTRY_USERNAME=$CONTAINER_REGISTRY/$IMAGE_REPOSITORY:$CIRCLE_WORKFLOW_ID
             <%_ } else if (deployService=="azws") { _%>
             - run:
