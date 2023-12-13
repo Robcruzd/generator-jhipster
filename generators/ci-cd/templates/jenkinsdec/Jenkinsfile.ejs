@@ -20,7 +20,6 @@
 
 pipeline {
     agent any
-
     stages {
         stage('Build and Test') {
             steps {
@@ -68,7 +67,7 @@ pipeline {
                 junit '**/build/test-results/TESTS-*.xml'
                 <%_ } _%>
                 <%_ } _%>
-                if (cicdIntegrationsSonar) { _%>
+                <%_ if (cicdIntegrationsSonar) { _%>
                 withSonarQubeEnv('<%= sonarName %>') {
                 <%_ if (buildToolMaven) { _%>
                 sh "./mvnw -ntp initialize sonar:sonar"
@@ -146,5 +145,9 @@ pipeline {
             }
         }
         <%_ } _%>
+    }
+
+    when {
+        branch '<%= BRANCH %>'
     }
 }

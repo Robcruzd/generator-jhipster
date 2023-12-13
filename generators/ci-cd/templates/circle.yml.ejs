@@ -35,12 +35,12 @@ jobs:
                     # Perform a Partial Cache Restore (https://circleci.com/docs/2.0/caching/#restoring-cache)
                     - v1-dependencies-
             - run:
-                name: Install Java 17
+                name: Install Java <%= JAVA_VERSION %>
                 command: |
-                    sudo apt-get update && sudo apt-get install -y openjdk-17-jdk
+                    sudo apt-get update && sudo apt-get install -y openjdk-<%= JAVA_VERSION %>-jdk
             - run:
-                name: Set Java 17 as default
-                command: sudo update-alternatives --set java /usr/lib/jvm/java-17-openjdk-amd64/bin/java
+                name: Set Java <%= JAVA_VERSION %> as default
+                command: sudo update-alternatives --set java /usr/lib/jvm/java-<%= JAVA_VERSION %>-openjdk-amd64/bin/java
           
             - run:
                 name: Print Java Version
@@ -97,19 +97,7 @@ jobs:
                 name: Run Front End Tests
                 command: <%= clientPackageManager %> run ci:frontend:test
             <%_ } _%>
-            <%_ if (buildToolMaven) { _%>
-                <%_ if (cicdIntegrationsHeroku) { _%>
-            - run:
-                name: Deploy to Heroku
-                command: './mvnw -ntp com.heroku.sdk:heroku-maven-plugin:2.0.5:deploy -DskipTests -Pprod -Dheroku.buildpacks=heroku/jvm -Dheroku.appName=<%= herokuAppName %>'
-                <%_ } _%>
-            <%_ } else if (buildToolGradle) { _%>
-                <%_ if (cicdIntegrationsHeroku) { _%>
-            - run:
-                name: Deploy to Heroku
-                command: './gradlew deployHeroku --no-daemon'
-                <%_ } _%>
-            <%_ } _%>
+            
             <%_ if (cypressTests) {
                 const commented = '# '; _%>
             <%= commented %>- run:
@@ -130,7 +118,7 @@ jobs:
             <%= commented %>    command: <%= clientPackageManager %> run ci:e2e:teardown
             <%_ } _%>
 
-    <%_ if (deliverDeploy && deliverTool!="artifactory") { _%>
+    <%_ if (deliverDeploy && deliverTool!="heroku") { _%>
     
     deliver:
         machine:
@@ -138,9 +126,9 @@ jobs:
         steps:
             - checkout
             - run:
-                name: Install Java 17
+                name: Install Java <%= JAVA_VERSION %>
                 command: |
-                    sudo apt-get update && sudo apt-get install -y openjdk-17-jdk
+                    sudo apt-get update && sudo apt-get install -y openjdk-<%= JAVA_VERSION %>-jdk
             - run:
                 name: Give Executable Power
             <%_ if (buildToolMaven) { _%>
@@ -152,14 +140,23 @@ jobs:
             - run: 
                 name: Generate JAR
                 command: |
-                    export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64/
+                    export JAVA_HOME=/usr/lib/jvm/java-<%= JAVA_VERSION %>-openjdk-amd64/
                     npm run java:jar:prod
             - persist_to_workspace:
                 root: .
                 paths:
+                    <%_ if (buildToolMaven) { _%>
                     - target/*.jar
+                    <%_ } else if (buildToolGradle) { _%>
+                    - build/libs/*.jar
+                    <%_ } _%>
+                    
             - store_artifacts:
+                <%_ if (buildToolMaven) { _%>
                 path: target/*.jar
+                <%_ } else if (buildToolGradle) { _%>
+                path: build/libs/*.jar
+                <%_ } _%>
             <%_ } else if (deliver=="docker" || deployService=="azwsc" || deployService=="aks") { _%>
             - run:
                 name: Login to Azure Container Registry
@@ -228,7 +225,26 @@ jobs:
                 name: Azure logout
                 command: az logout
     <%_ } _%>
+    <%_ } else if (deliverDeploy && deliverTool=="heroku") { _%>
+    deploy:
+        machine:
+            image: ubuntu-2004:current
+        steps:
+        <%_ if (buildToolMaven) { _%>
+            <%_ if (cicdIntegrationsHeroku) { _%>
+            - run:
+                name: Deploy to Heroku
+                command: './mvnw -ntp com.heroku.sdk:heroku-maven-plugin:2.0.5:deploy -DskipTests -Pprod -Dheroku.buildpacks=heroku/jvm -Dheroku.appName=<%= herokuAppName %>'
+            <%_ } _%>
+        <%_ } else if (buildToolGradle) { _%>
+            <%_ if (cicdIntegrationsHeroku) { _%>
+            - run:
+                name: Deploy to Heroku
+                command: './gradlew deployHeroku --no-daemon'
+            <%_ } _%>
+        <%_ } _%>
     <%_ } _%>
+    
 
 workflows:
     version: 2
@@ -238,13 +254,13 @@ workflows:
             filters:
                 branches:
                     only:
-                        - master
+                        - <%= BRANCH %>
         <%_ if (deliverDeployAz) { _%>
         - deliver:
             filters:
                 branches:
                     only:
-                        - master
+                        - <%= BRANCH %>
         <%_ if (azure=="deploy") { _%>
         - deploy:
             requires:
@@ -252,6 +268,6 @@ workflows:
             filters:
                 branches:
                     only:
-                        - master
+                        - <%= BRANCH %>
         <%_ } _%>
         <%_ } _%>

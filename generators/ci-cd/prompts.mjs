@@ -94,7 +94,7 @@ async function askIntegrations() {
   if (this.autoconfigureJenkins) {
     this.cicdIntegrations = [];
     this.sendBuildToGitlab = false;
-    this.insideDocker = true;
+    this.insideDocker = false;
     return;
   }
 
@@ -125,19 +125,24 @@ async function askIntegrations() {
 
 
   const integrationChoices = [];
-  if (['jenkinsscp', 'gitlab', 'travis', 'github', 'circle', 'azure'].includes(this.pipeline)) {
+  if (['jenkinsscp', 'jenkinsdec', 'gitlab', 'travis', 'github', 'circle', 'azure'].includes(this.pipeline)) {
       integrationChoices.push({
         name: `${chalk.yellow('*Snyk*')}: dependency scanning for security vulnerabilities (requires SNYK_TOKEN)`,
         value: 'snyk',
       });
     }
-  if (['jenkinsscp', 'gitlab', 'travis', 'github'].includes(this.pipeline)) {
+  if (['jenkinsscp', 'jenkinsdec', 'gitlab', 'travis', 'github'].includes(this.pipeline)) {
     integrationChoices.push({ name: `Analyze your code with ${chalk.yellow('*Sonar*')}`, value: 'sonar' });
   }
-  if (['jenkinsscp', 'jenkins', 'gitlab', 'travis', 'github', 'circle'].includes(this.pipeline)) {
+  if (['jenkinsdec', 'travis', 'github', 'circle'].includes(this.pipeline)) {
     integrationChoices.push({
       name: `Add deliver and deploy to the pipeline`,
       value: 'deliverDeploy'
+    })
+  } else if (['jenkinsscp', 'gitlab'].includes(this.pipeline)) {
+    integrationChoices.push({
+      name: `Add deploy on Heroku services to the pipeline`,
+      value: 'heroku'
     })
   } else {
     integrationChoices.push({
@@ -171,13 +176,13 @@ async function askIntegrations() {
   const defaultDockerImage = `jhipster/${this.dasherizedBaseName}`;
 
   const prompts = [
-    // {
-    //   when: this.pipeline === 'jenkinsscp',
-    //   type: 'confirm',
-    //   name: 'insideDocker',
-    //   message: 'Would you like to perform the build in a Docker container ?',
-    //   default: false,
-    // },
+    {
+      when: this.pipeline === 'jenkinsscp',
+      type: 'confirm',
+      name: 'insideDocker',
+      message: 'Would you like to perform the build in a Docker container ?',
+      default: false,
+    },
     // {
     //   when: this.pipeline === 'gitlab',
     //   type: 'confirm',
@@ -201,18 +206,18 @@ async function askIntegrations() {
       choices: integrationChoices,
     },
     {
-      when: response => ['jenkinsscp', 'jenkins', 'gitlab'].includes(this.pipeline) && response.cicdIntegrations.includes('deliverDeploy'),
+      when: response => ['jenkinsdec', 'gitlab', 'circle'].includes(this.pipeline) && (response.cicdIntegrations &&  response.cicdIntegrations.includes('deliverDeploy')),
       type: 'list',
       name: 'deliverTool',
       message: 'Where do you want to deliver or deploy the app?',
       default: 'azure',
       choices: [
         { name: 'Azure: Deliver and/or deploy with azure services', value: 'azure' },
-        { name: 'Heroku: Deliver your application to an Artifactory and deploy on Heroku', value: 'heroku'}
+        { name: 'Heroku: Deploy your application on Heroku', value: 'heroku'}
       ]
     },
     {
-      when: response => ['jenkinsscp', 'jenkins', 'gitlab', 'travis', 'github', 'circle'].includes(this.pipeline) && response.cicdIntegrations.includes('deliverDeploy'),
+      when: response => ['travis', 'github'].includes(this.pipeline) && (response.cicdIntegrations &&  response.cicdIntegrations.includes('deliverDeploy')),
       type: 'list',
       name: 'deliverTool',
       message: 'Where do you want to deliver or deploy the app?',
@@ -223,35 +228,35 @@ async function askIntegrations() {
       ]
     },
     {
-      when: response => response.deliverTool && (response.deliverTool.includes('artifactory') || response.deliverTool.includes('heroku')),
+      when: response => response.deliverTool && (response.deliverTool.includes('artifactory')),
       type: 'input',
       name: 'artifactorySnapshotsId',
       message: `${chalk.yellow('*Artifactory*')}: what is the ID of distributionManagement for snapshots ?`,
       default: 'snapshots',
     },
     {
-      when: response => response.deliverTool && (response.deliverTool.includes('artifactory') || response.deliverTool.includes('heroku')),
+      when: response => response.deliverTool && (response.deliverTool.includes('artifactory')),
       type: 'input',
       name: 'artifactorySnapshotsUrl',
       message: `${chalk.yellow('*Artifactory*')}: what is the URL of distributionManagement for snapshots ?`,
       default: 'http://artifactory:8081/artifactory/libs-snapshot',
     },
     {
-      when: response => response.deliverTool && (response.deliverTool.includes('artifactory') || response.deliverTool.includes('heroku')),
+      when: response => response.deliverTool && (response.deliverTool.includes('artifactory')),
       type: 'input',
       name: 'artifactoryReleasesId',
       message: `${chalk.yellow('*Artifactory*')}: what is the ID of distributionManagement for releases ?`,
       default: 'releases',
     },
     {
-      when: response => response.deliverTool && (response.deliverTool.includes('artifactory') || response.deliverTool.includes('heroku')),
+      when: response => response.deliverTool && (response.deliverTool.includes('artifactory')),
       type: 'input',
       name: 'artifactoryReleasesUrl',
       message: `${chalk.yellow('*Artifactory*')}: what is the URL of distributionManagement for releases ?`,
       default: 'http://artifactory:8081/artifactory/libs-release',
     },
     {
-      when: response => response.deliverTool && response.deliverTool.includes('heroku'),
+      when: response => (response.deliverTool && response.deliverTool.includes('heroku')) || (response.cicdIntegrations && response.cicdIntegrations.includes('heroku')),
       type: 'input',
       name: 'herokuAppName',
       message: `${chalk.yellow('*Heroku*')}: name of your Heroku Application ?`,
@@ -292,25 +297,43 @@ async function askIntegrations() {
       ]
     },
     {
-      when: response => this.pipeline === 'jenkinsscp' && response.cicdIntegrations.includes('sonar'),
+      when: response => ['jenkinsscp', 'jenkinsdec'].includes(this.pipeline) && (response.cicdIntegrations &&  response.cicdIntegrations.includes('sonar')),
       type: 'input',
       name: 'sonarName',
       message: `${chalk.yellow('*Sonar*')}: what is the name of the Sonar server ?`,
       default: 'sonar',
     },
     {
-      when: response => this.pipeline !== 'jenkinsscp' && response.cicdIntegrations.includes('sonar'),
+      when: response => !['jenkinsscp', 'jenkinsdec'].includes(this.pipeline) &&(response.cicdIntegrations &&  response.cicdIntegrations.includes('sonar')),
       type: 'input',
       name: 'sonarUrl',
       message: `${chalk.yellow('*Sonar*')}: what is the URL of the Sonar server ?`,
       default: 'https://sonarcloud.io',
     },
     {
-      when: response => this.pipeline !== 'jenkinsscp' && response.cicdIntegrations.includes('sonar'),
+      when: response => !['jenkinsscp', 'jenkinsdec'].includes(this.pipeline) &&(response.cicdIntegrations &&  response.cicdIntegrations.includes('sonar')),
       type: 'input',
       name: 'sonarOrga',
       message: `${chalk.yellow('*Sonar*')}: what is the Organization of the Sonar server ?`,
       default: '',
+    },
+    {
+      when: response => !['jenkinsscp', 'jenkinsdec', 'gitlab'].includes(this.pipeline),
+      type: 'list',
+      name: 'java',
+      message: `What ${chalk.yellow('*Java*')} version do you want to use?`,
+      default: '17',
+      choices: [
+        { name: 'Java 17', value: '17'},
+        { name: 'Java 11', value: '11' }
+      ]
+    },
+    {
+      when: response => !['gitlab'].includes(this.pipeline),
+      type: 'input',
+      name: 'branch',
+      message: `What ${chalk.yellow('*branch*')} do you want to publish`,
+      default: 'master',
     },
     // {
     //   when: response => this.pipeline === 'github' && response.cicdIntegrations.includes('publishDocker'),

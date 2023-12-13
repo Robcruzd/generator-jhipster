@@ -180,7 +180,7 @@ export default class CiCdGenerator extends BaseApplicationGenerator {
     dest.cicdIntegrations = dest.cicdIntegrations || config.cicdIntegrations || [];
     dest.cicdIntegrationsSnyk = dest.cicdIntegrations.includes('snyk');
     dest.cicdIntegrationsSonar = dest.cicdIntegrations.includes('sonar');
-    dest.cicdIntegrationsHeroku = dest.cicdIntegrations.includes('heroku');
+    dest.cicdIntegrationsHeroku = (dest.propsPrompt.deliverTool && dest.propsPrompt.deliverTool.includes('heroku')) || dest.cicdIntegrations.includes('heroku');
     dest.cicdIntegrationsDeploy = dest.cicdIntegrations.includes('deploy');
     dest.cicdIntegrationsPublishDocker = dest.cicdIntegrations.includes('publishDocker');
     dest.cicdIntegrationsCypressDashboard = dest.cicdIntegrations.includes('cypressDashboard');
@@ -190,6 +190,10 @@ export default class CiCdGenerator extends BaseApplicationGenerator {
     dest.deliverTool = dest.propsPrompt.deliverTool;
     dest.deliver = dest.propsPrompt.deliver;
     dest.deployService = dest.propsPrompt.deployService;
+    this.JAVA_VERSION = dest.propsPrompt.java;
+    this.BRANCH = dest.propsPrompt.branch;
+    this.protractorTests = this.protractorTests ? protractorTests:false;
+    this.buildDir = this.buildDir ? buildDir:"target/";
     // dest.jar = dest.propsPrompt.jar;
     // dest.docker = dest.propsPrompt.docker;
     // dest.azwsc = dest.propsPrompt.azwsc;
@@ -254,11 +258,7 @@ export default class CiCdGenerator extends BaseApplicationGenerator {
                   {
                     sourceFile: 'jenkins.yml',
                     destinationFile: `${application.dockerServicesDir}jenkins.yml`,
-                  },
-                  {
-                    sourceFile: 'idea.gdsl',
-                    destinationFile: `${application.srcMainResources}idea.gdsl`,
-                  },
+                  }
                 ],
               },
             ],
@@ -316,7 +316,7 @@ export default class CiCdGenerator extends BaseApplicationGenerator {
           }
         }
 
-        if (this.cicdIntegrations.includes('publishDocker')) {
+        if (this.cicdIntegrations && this.cicdIntegrations.includes('publishDocker')) {
           this.writeFile('docker-registry.yml.ejs', `${application.dockerServicesDir}docker-registry.yml`);
         }
       },

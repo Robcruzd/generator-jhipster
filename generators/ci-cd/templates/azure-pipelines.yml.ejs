@@ -16,6 +16,10 @@
  See the License for the specific language governing permissions and
  limitations under the License.
 -%>
+
+trigger:
+  - <%= BRANCH %>
+
 variables:
   NODE_VERSION: <%= NODE_VERSION %>
   SPRING_OUTPUT_ANSI_ENABLED: NEVER
@@ -156,7 +160,7 @@ stages:
     <%= commented %>  displayName: 'E2E: Teardown'
   <%_ } _%>
 
-<%_ if (deliverDeploy && deliverTool!="artifactory") { _%>
+<%_ if (deliverDeployAz && deliverTool!="artifactory") { _%>
 - stage: Deliver
   displayName: Deliver stage
   jobs:
@@ -169,7 +173,7 @@ stages:
 
     - task: JavaToolInstaller@0
       inputs:
-        versionSpec: '<%= JAVA_VERSION %>''
+        versionSpec: <%= JAVA_VERSION %>
         jdkArchitectureOption: 'x64'
         jdkSourceOption: 'PreInstalled'
       displayName: 'Change Java version'
@@ -184,7 +188,11 @@ stages:
       displayName: 'Copy Files to artifact staging directory'
       inputs:
         SourceFolder: '$(System.DefaultWorkingDirectory)'
-        Contents: '**/target/<%= baseName %>*.jar'
+        <%_ if (buildToolMaven) { _%>
+        Contents: '**/target/*.jar'
+        <%_ } else if (buildToolGradle) { _%>
+        Contents: '**/build/libs/*.jar'
+        <%_ } _%>
         TargetFolder: $(Build.ArtifactStagingDirectory)
     
     - upload: $(Build.ArtifactStagingDirectory)

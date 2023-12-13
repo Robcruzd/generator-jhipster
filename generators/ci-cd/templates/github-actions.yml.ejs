@@ -17,7 +17,13 @@
  limitations under the License.
 -%>
 name: Application CI
-on: [push, pull_request]
+on: 
+  push:
+    branches:
+      - <%= BRANCH %>
+  pull_request:
+    branches:
+      - <%= BRANCH %>
 env:
 <%_ if (!skipClient) { _%>
     NODE_VERSION: <%= nodeVersion %>
@@ -115,12 +121,6 @@ if (!skipClient) { _%>
                       echo No SONAR_TOKEN, skipping...
                   fi
 <%_ } _%>
-            - name: Package application
-<%_ if (!skipServer) { _%>
-              run: <%= clientPackageManager %> run java:jar:prod
-<%_ } else { _%>
-              run: <%= clientPackageManager %> run build
-<%_ } _%>
 <%_ if (cicdIntegrationsPublishDocker) { _%>
             - name: Build and publish docker image
               if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
@@ -170,7 +170,11 @@ if (!skipClient) { _%>
           uses: actions/upload-artifact@v3
           with:
             name: drop
-            path: ${{ github.workspace }}/target/<%= baseName %>*.jar
+            <%_ if (buildToolMaven) { _%>
+            path: ${{ github.workspace }}/target/*.jar
+            <%_ } else if (buildToolGradle) { _%>
+            path: ${{ github.workspace }}/build/libs/*.jar
+            <%_ } _%>
       <%_ } else if (deliver=="docker" || deployService=="azwsc" || deployService=="aks") { _%>
         - name: Login to Azure Container Registry
           uses: azure/docker-login@v1
@@ -237,7 +241,7 @@ if (!skipClient) { _%>
             uses: azure/webapps-deploy@v2
             with:
               app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
-              package: <%= baseName %>*.jar
+              package: *.jar
               publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
         <%_ } _%>
         <%_ if (deployService=="azwsc") { _%>
