@@ -28,7 +28,7 @@
   },
   "devDependencies": {
     "@testing-library/react": "13.4.0",
-    "@types/jest": "29.4.0",
+    "@types/jest": "29.5.11",
     "@types/lodash": "4.14.191",
     "@types/node": "16.18.11",
     "@types/react": "18.0.27",
@@ -54,7 +54,7 @@
     "fork-ts-checker-webpack-plugin": "7.3.0",
     "html-webpack-plugin": "5.5.0",
     "identity-obj-proxy": "3.0.0",
-    "jest": "29.4.1",
+    "jest": "29.7.0",
     "jest-environment-jsdom": "29.4.1",
     "jest-junit": "15.0.0",
     "jest-sonar": "0.2.15",
