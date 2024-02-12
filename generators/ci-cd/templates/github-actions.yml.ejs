@@ -200,9 +200,6 @@ if (!skipClient) { _%>
     deploy:
         needs: deliver
         runs-on: ubuntu-latest
-        <%_ if (deployService=="azws") { _%>
-        environment: ${{ secrets.AZURE_WEBAPP_NAME }}
-        <%_ } _%>
         steps:
         <%_ if (cicdIntegrationsHeroku) { _%>
           - name: Deploy to Heroku
@@ -241,7 +238,7 @@ if (!skipClient) { _%>
             uses: azure/webapps-deploy@v2
             with:
               app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
-              package: *.jar
+              package: '*.jar'
               publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
         <%_ } _%>
         <%_ if (deployService=="azwsc") { _%>
