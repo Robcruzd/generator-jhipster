@@ -43,7 +43,7 @@ FROM redis:7.0.8
 FROM confluentinc/cp-kafka:7.3.1
 LABEL ALIAS=kafka
 
-FROM confluentinc/cp-zookeeper:7.3.1
+FROM confluentinc/cp-zookeeper:7.6.0
 LABEL ALIAS=zookeeper
 
 FROM sonarqube:9.8.0-community
