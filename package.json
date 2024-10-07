@@ -134,7 +134,7 @@
     "@typescript-eslint/eslint-plugin": "5.48.2",
     "@typescript-eslint/parser": "5.48.2",
     "chai": "4.3.7",
-    "chokidar": "3.5.3",
+    "chokidar": "4.0.1",
     "concurrently": "7.6.0",
     "cpy-cli": "4.2.0",
     "ejs-lint": "2.0.0",
