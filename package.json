@@ -118,7 +118,7 @@
     "shelljs": "0.8.5",
     "simple-git": "3.16.0",
     "uuid": "9.0.0",
-    "winston": "3.8.2",
+    "winston": "3.16.0",
     "yaml": "2.2.1",
     "yeoman-environment": "3.13.0",
     "yeoman-generator": "5.7.0"
