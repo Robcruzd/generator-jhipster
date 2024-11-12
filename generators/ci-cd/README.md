@@ -27,7 +27,7 @@ Adicionalmente las herramientas de CI/CD con las que cuenta el generador son:
 
 ## Requisitos previos
 
-- [JHipster](https://www.jhipster.tech/) versión 7.9.3 o superior.
+- [JHipster](https://www.jhipster.tech/) versión 7.9.3 (usar la del presente repositorio).
 - [Node.js](https://nodejs.org/) (se recomienda versión 16.17.0) y [NPM](https://www.npmjs.com/) (se recomienda versión 8.15.0).
 - [Azure CLI](https://docs.microsoft.com/en-us/cli/azure/install-azure-cli) para la interacción con servicios de Azure para herramientas de ci-cd local como jenkins.
 - Cuenta en [Azure](https://azure.microsoft.com/) con los siguientes servicios habilitados:
